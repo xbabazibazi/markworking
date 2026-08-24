@@ -2030,7 +2030,6 @@ class MainWindow(QMainWindow):
 
         self._tray.activated.connect(self._on_tray_activated)
         self._tray.show()
-        self._tray_notified = False
 
     def _on_tray_activated(self, reason):
         if reason in (QSystemTrayIcon.ActivationReason.Trigger,
@@ -2046,21 +2045,17 @@ class MainWindow(QMainWindow):
             self.raise_()
 
     def _quit_from_tray(self):
+        self._full_exit()
+
+    def _full_exit(self):
         import os as _os
-        self._tray.hide()
+        if hasattr(self, "_tray"):
+            self._tray.hide()
         _os._exit(0)
 
     def closeEvent(self, event):
-        event.ignore()
-        self.hide()
-        if not self._tray_notified:
-            self._tray_notified = True
-            self._tray.showMessage(
-                self._assistant_name,
-                "Arka planda çalışmaya devam ediyor. Tepsi ikonuna tıklayarak geri açabilirsin.",
-                QSystemTrayIcon.MessageIcon.Information,
-                4000,
-            )
+        event.accept()
+        self._full_exit()
 
     def _show_camera_frame(self, img_bytes: bytes):
         """Slot — display camera preview overlay (main thread)."""
@@ -3438,7 +3433,6 @@ class JarvisUI:
     def __init__(self, face_path: str, size=None):
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
-        self._app.setQuitOnLastWindowClosed(False)
         self._win = MainWindow(face_path)
         self._win.show()
         self.root = _RootShim(self._app)

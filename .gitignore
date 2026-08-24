@@ -21,3 +21,8 @@ Thumbs.db
 
 # Boş/artefakt dosya
 2.1.0
+
+# PyInstaller build çıktıları (bu makineye özel mutlak yol içerir, versiyonlanmaz)
+Jarvis.exe
+build_tmp/
+*.spec
