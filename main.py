@@ -276,7 +276,16 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "action":      {"type": "STRING", "description": "The action to perform"},
                 "description": {"type": "STRING", "description": "Natural language description of what to do"},
-                "value":       {"type": "STRING", "description": "Optional value: volume level, text to type, etc."}
+                "value":       {
+                    "type": "STRING",
+                    "description": (
+                        "Optional value: volume level, text to type, etc. "
+                        "For action=close_app, pass the app's name here (e.g. 'firefox') to close that "
+                        "SPECIFIC app regardless of which window is focused — use the name of the app "
+                        "you most recently opened or the user mentioned. Leave empty only if the user means "
+                        "'close whatever window is currently focused'."
+                    ),
+                }
             },
             "required": []
         }

@@ -176,6 +176,38 @@ def close_app():
     if _OS == "Darwin": pyautogui.hotkey("command", "q")
     else:               pyautogui.hotkey("alt", "f4")
 
+def close_app_by_name(name: str) -> str:
+    """Closes a specific app by name/process, regardless of which window
+    currently has focus — unlike close_app() which blindly Alt+F4s whatever
+    is focused. Reuses open_app's alias map to resolve friendly names."""
+    from actions.open_app import _normalize
+    proc = _normalize(name).strip() or name.strip()
+
+    if _OS == "Windows":
+        # Force-kill directly: most multi-process apps (browsers especially)
+        # have background child processes with no window to receive a graceful
+        # close request, so an un-forced taskkill reliably fails on them. A
+        # voice command can't answer a "save changes?" dialog anyway, so there
+        # is no benefit to attempting a graceful close first.
+        exe = proc if proc.lower().endswith(".exe") else f"{proc}.exe"
+        result = subprocess.run(
+            ["taskkill", "/IM", exe, "/F", "/T"],
+            capture_output=True, text=True, timeout=8, **_WIN_HIDE
+        )
+        if result.returncode == 0:
+            return f"Closed {name}."
+        return f"Could not find a running process for {name}."
+
+    if _OS == "Darwin":
+        result = subprocess.run(
+            ["osascript", "-e", f'quit app "{proc}"'],
+            capture_output=True, text=True, timeout=8,
+        )
+        return f"Closed {name}." if result.returncode == 0 else f"Could not close {name}: {result.stderr.strip()}"
+
+    result = subprocess.run(["pkill", "-i", proc], capture_output=True, text=True, timeout=8)
+    return f"Closed {name}." if result.returncode == 0 else f"Could not find a running process for {name}."
+
 def close_window():
     if _OS == "Darwin": pyautogui.hotkey("command", "w")
     else:               pyautogui.hotkey("ctrl", "w")
@@ -656,6 +688,13 @@ def computer_settings(
                 f"This will {action} the computer. "
                 f"Please confirm by calling again with confirmed=yes."
             )
+
+    if action == "close_app":
+        app_name = str(value or params.get("app_name", "")).strip()
+        if app_name:
+            return close_app_by_name(app_name)
+        close_app()
+        return "Closed the focused app."
 
     if action == "volume_set":
         try:

@@ -15,6 +15,9 @@ Length: Match response length to the task. Briefing = short. Complex analysis = 
 TOOL ROUTING:
 
 computer_settings: ALL single OS actions (volume, brightness, wifi, close, shortcuts, power).
+  For "close X" or "close what you just opened": call action=close_app with value=<app name>
+  (e.g. the app you just opened via open_app). This closes that specific app by name, reliably,
+  even if it never gained window focus. Only omit value if the user means the currently focused window.
 agent_task: fallback for ANY system-level or multi-step task with no dedicated tool (install software,
   run scripts, batch file ops, git/system commands, raw shell access). Never call it if a more specific
   tool already covers the request.
