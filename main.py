@@ -100,6 +100,13 @@ SEND_SAMPLE_RATE    = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
 
+# Duplicate-call guard: if the model (or an audio echo) fires the exact same
+# tool with the exact same arguments again within this window, skip the second
+# execution instead of repeating a real-world side effect (opening an app twice,
+# clicking twice, etc.). A few read-only/idempotent tools are exempt.
+DEDUP_WINDOW_SECONDS = 4.0
+DEDUP_EXEMPT_TOOLS   = {"save_memory", "system_status", "web_search", "weather_report", "screen_process"}
+
 def _get_api_key() -> str:
     with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)["gemini_api_key"]
@@ -612,6 +619,7 @@ class JarvisLive:
         self._vision_last_time     = 0.0     # monotonic time of last screen_process call (cooldown guard)
         self._vision_busy          = False   # True while a vision capture/inject cycle is in flight
         self._interrupted          = False   # True while draining audio after user interrupt
+        self._recent_tool_calls: dict[tuple, float] = {}  # (name, args_json) -> monotonic time, duplicate-call guard
         self.ui.on_text_command   = self._on_text_command
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
@@ -802,6 +810,26 @@ class JarvisLive:
 
         print(f"[JARVIS] 🔧 {name}  {args}")
         self.ui.set_state("THINKING")
+
+        if name not in DEDUP_EXEMPT_TOOLS:
+            sig  = (name, json.dumps(args, sort_keys=True, default=str))
+            now  = time.monotonic()
+            last = self._recent_tool_calls.get(sig)
+            self._recent_tool_calls[sig] = now
+            # occasional cleanup so this dict doesn't grow forever in a long session
+            if len(self._recent_tool_calls) > 200:
+                cutoff = now - DEDUP_WINDOW_SECONDS
+                self._recent_tool_calls = {
+                    k: v for k, v in self._recent_tool_calls.items() if v >= cutoff
+                }
+            if last is not None and (now - last) < DEDUP_WINDOW_SECONDS:
+                print(f"[JARVIS] ⏭ Duplicate call suppressed: {name} {args} ({now - last:.1f}s after previous)")
+                if not self.ui.muted:
+                    self.ui.set_state("LISTENING")
+                return types.FunctionResponse(
+                    id=fc.id, name=name,
+                    response={"result": "Already just did this — skipped the duplicate call, do not repeat it again."}
+                )
 
         if name == "save_memory":
             category = args.get("category", "notes")
