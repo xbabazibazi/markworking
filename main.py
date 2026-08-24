@@ -73,6 +73,7 @@ from actions.browser_control   import browser_control
 from actions.file_controller   import file_controller
 from actions.code_helper       import code_helper
 from actions.dev_agent         import dev_agent
+from actions.agent_task        import agent_task
 from actions.web_search        import web_search as web_search_action
 from actions.computer_control  import computer_control
 from actions.game_updater      import game_updater
@@ -366,6 +367,28 @@ TOOL_DECLARATIONS = [
                 "language":     {"type": "STRING", "description": "Programming language (default: python)"},
                 "project_name": {"type": "STRING", "description": "Optional project folder name"},
                 "timeout":      {"type": "INTEGER", "description": "Run timeout in seconds (default: 30)"},
+            },
+            "required": ["description"]
+        }
+    },
+    {
+        "name": "agent_task",
+        "description": (
+            "General-purpose fallback for ANY multi-step or system-level task that doesn't "
+            "match a more specific tool above — installing software, running scripts, batch "
+            "file operations, git/system commands, anything requiring raw shell access. "
+            "Do not call this if a more specific tool can already do it. "
+            "If the result starts with [CONFIRMATION_NEEDED], read the plan to the user in "
+            "their language, ask for explicit spoken confirmation, and only then call this "
+            "tool again with the SAME description and confirmed=true. Never set confirmed=true "
+            "without an explicit 'yes' from the user."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "description": {"type": "STRING",  "description": "What the user wants done, in plain language"},
+                "confirmed":   {"type": "BOOLEAN", "description": "Set true ONLY after the user explicitly confirmed a risky plan"},
+                "timeout":     {"type": "INTEGER", "description": "Per-step timeout in seconds (default: 30)"},
             },
             "required": ["description"]
         }
@@ -896,6 +919,10 @@ class JarvisLive:
                     None,
                     lambda: file_processor(parameters=args, player=self.ui, speak=self.speak)
                 )
+                result = r or "Done."
+
+            elif name == "agent_task":
+                r = await loop.run_in_executor(None, lambda: agent_task(parameters=args, player=self.ui, speak=self.speak))
                 result = r or "Done."
 
             elif name == "computer_control":
