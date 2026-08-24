@@ -74,6 +74,7 @@ from actions.file_controller   import file_controller
 from actions.code_helper       import code_helper
 from actions.dev_agent         import dev_agent
 from actions.agent_task        import agent_task
+from actions.project_agent     import project_agent
 from actions.web_search        import web_search as web_search_action
 from actions.computer_control  import computer_control
 from actions.game_updater      import game_updater
@@ -407,6 +408,24 @@ TOOL_DECLARATIONS = [
                 "timeout":     {"type": "INTEGER", "description": "Per-step timeout in seconds (default: 30)"},
             },
             "required": ["description"]
+        }
+    },
+    {
+        "name": "project_agent",
+        "description": (
+            "Makes a change to an EXISTING multi-file project/codebase (not a brand-new project — "
+            "use dev_agent for that). Reads the relevant files for context, writes the change across "
+            "however many files it needs, and (by default) commits and pushes it to git. "
+            "Use for requests like 'add X to project Y' or 'fix the Z bug in project Y'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "project": {"type": "STRING",  "description": "Known project name (e.g. 'quon erp', 'bekci') or a full folder path"},
+                "task":    {"type": "STRING",  "description": "What change to make, in plain language"},
+                "commit":  {"type": "BOOLEAN", "description": "Commit and push when done (default: true)"},
+            },
+            "required": ["project", "task"]
         }
     },
     {
@@ -960,6 +979,10 @@ class JarvisLive:
 
             elif name == "agent_task":
                 r = await loop.run_in_executor(None, lambda: agent_task(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Done."
+
+            elif name == "project_agent":
+                r = await loop.run_in_executor(None, lambda: project_agent(parameters=args, player=self.ui, speak=self.speak))
                 result = r or "Done."
 
             elif name == "computer_control":
