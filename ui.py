@@ -19,7 +19,7 @@ else:
     _WIN_HIDE: dict = {}
 
 from PyQt6.QtCore import (
-    QEasingCurve, QMimeData, QObject, QPointF, QRectF, QSize, Qt,
+    QEasingCurve, QEvent, QMimeData, QObject, QPointF, QRectF, QSize, Qt,
     QTimer, QUrl, pyqtSignal,
 )
 from PyQt6.QtGui import (
@@ -2056,6 +2056,20 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         event.accept()
         self._full_exit()
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.Type.WindowStateChange and self.isMinimized():
+            event.ignore()
+            self.hide()
+            if not getattr(self, "_tray_min_notified", False):
+                self._tray_min_notified = True
+                self._tray.showMessage(
+                    self._assistant_name,
+                    "Tepside arka planda çalışmaya devam ediyor. Geri açmak için tepsi ikonuna tıkla.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    3000,
+                )
+        super().changeEvent(event)
 
     def _show_camera_frame(self, img_bytes: bytes):
         """Slot — display camera preview overlay (main thread)."""
