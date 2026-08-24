@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Sanal ortam
+venv/
+.venv/
+
+# Sırlar / kişisel veri
+config/api_keys.json
+config/certs/*.key
+config/certs/*.crt
+memory/long_term.json
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Boş/artefakt dosya
+2.1.0
