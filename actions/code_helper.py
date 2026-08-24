@@ -2,6 +2,7 @@ import subprocess
 import sys
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -572,7 +573,15 @@ def code_helper(
         return _run_action(file_path, args, timeout, player)
 
     elif action == "build":
-        return _build(description, language, output_path, args, timeout, speak, player)
+        def _worker():
+            result = _build(description, language, output_path, args, timeout, None, player)
+            if speak:
+                speak(f"[TASK_COMPLETE] code_helper build — {description[:60]}\n{result}")
+        threading.Thread(target=_worker, daemon=True).start()
+        return (
+            f"Starting to build this in the background, sir: {description[:80]}. "
+            f"I will let you know when it's done."
+        )
 
     elif action == "optimize":
         return _optimize_action(file_path, code, language, output_path, player)

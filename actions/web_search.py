@@ -26,7 +26,7 @@ def _gemini_search(query: str) -> str:
         client = genai.Client(api_key=_get_api_key())
         
         chat = client.chats.create(
-            model="gemini-2.5-flash",
+            model="gemini-flash-latest",
             config=types.GenerateContentConfig(
                 tools=[{"google_search": {}}]
             )

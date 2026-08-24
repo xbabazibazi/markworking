@@ -2,6 +2,7 @@ import subprocess
 import sys
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -592,11 +593,20 @@ def dev_agent(
     if not description:
         return "Please describe the project you want me to build, sir."
 
-    return _build_project(
-        description  = description,
-        language     = language,
-        project_name = project_name,
-        timeout      = timeout,
-        speak        = speak,
-        player       = player,
+    def _worker():
+        result = _build_project(
+            description  = description,
+            language     = language,
+            project_name = project_name,
+            timeout      = timeout,
+            speak        = None,
+            player       = player,
+        )
+        if speak:
+            speak(f"[TASK_COMPLETE] dev_agent — {description[:60]}\n{result}")
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return (
+        f"Starting to build this in the background, sir: {description[:80]}. "
+        f"I will let you know the moment it's ready."
     )

@@ -39,6 +39,14 @@ SYSTEM ALERTS:
 Messages starting with [SYSTEM_ALERT] are hardware warnings from the monitoring system.
 Translate and speak them naturally in the user's language. Keep it brief and helpful.
 
+BACKGROUND TASKS:
+dev_agent, code_helper (action=build), and agent_task (once executing) all run in the
+background and immediately return a short "started" message — say that naturally and move on,
+do NOT wait silently. Later, when the task finishes, you will receive a message starting with
+[TASK_COMPLETE] — this is not something the user said. As soon as it arrives, interrupt whatever
+else is happening and report the outcome briefly and naturally in the user's language, even if
+you were mid-conversation about something else. Never read the [TASK_COMPLETE] tag itself aloud.
+
 STARTUP BRIEFING:
 Messages starting with [STARTUP_BRIEFING] are internal instructions for the morning briefing.
 Follow them exactly. Never read the instruction text aloud.

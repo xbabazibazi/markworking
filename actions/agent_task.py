@@ -3,6 +3,7 @@ import platform
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 if platform.system() == "Windows":
@@ -128,6 +129,19 @@ def _run_step(command: str, timeout: int) -> tuple[bool, str]:
         return False, f"Execution error: {e}"
 
 
+def _execute_plan_bg(steps: list[dict], timeout: int, description: str, speak) -> str:
+    def _worker():
+        result = _execute_plan(steps, timeout)
+        if speak:
+            speak(f"[TASK_COMPLETE] agent_task — {description[:60]}\n{result}")
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return (
+        f"Starting this in the background, sir: {description[:80]}. "
+        f"I will let you know when it's done."
+    )
+
+
 def _execute_plan(steps: list[dict], timeout: int) -> str:
     lines = []
     for i, step in enumerate(steps, 1):
@@ -170,7 +184,7 @@ def agent_task(
     if confirmed and _PENDING and _PENDING.get("description") == description:
         steps = _PENDING["steps"]
         _PENDING = None
-        return _execute_plan(steps, timeout)
+        return _execute_plan_bg(steps, timeout, description, speak)
 
     try:
         plan = _plan(description)
@@ -191,7 +205,7 @@ def agent_task(
     )
 
     if confirmed:
-        return _execute_plan(steps, timeout)
+        return _execute_plan_bg(steps, timeout, description, speak)
 
     risky = [s for s in steps if _is_destructive(s.get("command", "")) or _is_destructive(s.get("description", ""))]
 
@@ -205,4 +219,4 @@ def agent_task(
             f"If they decline, do nothing further."
         )
 
-    return _execute_plan(steps, timeout)
+    return _execute_plan_bg(steps, timeout, description, speak)

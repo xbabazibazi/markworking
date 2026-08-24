@@ -24,13 +24,13 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QDragEnterEvent, QDropEvent, QFont,
-    QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath,
+    QFontDatabase, QIcon, QKeySequence, QLinearGradient, QPainter, QPainterPath,
     QPen, QPixmap, QRadialGradient, QShortcut,
 )
 from PyQt6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
-    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
+    QMainWindow, QMenu, QPushButton, QScrollArea, QSizePolicy, QSplitter,
+    QStackedWidget, QSystemTrayIcon, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
 )
 
 def _base_dir() -> Path:
@@ -2010,6 +2010,58 @@ class MainWindow(QMainWindow):
         sc_intr = QShortcut(QKeySequence("Escape"), self)
         sc_intr.activated.connect(self._do_interrupt)
 
+        self._setup_tray()
+
+    # --- System tray: stay resident in the background ----------------------
+    def _setup_tray(self):
+        ico_path = Path(__file__).resolve().parent / "config" / "jarvis.ico"
+        icon = QIcon(str(ico_path)) if ico_path.exists() else self.windowIcon()
+
+        self._tray = QSystemTrayIcon(icon, self)
+        self._tray.setToolTip(f"{self._assistant_name} — running in background")
+
+        menu = QMenu()
+        show_action = menu.addAction("Göster / Gizle")
+        show_action.triggered.connect(self._toggle_tray_visibility)
+        menu.addSeparator()
+        quit_action = menu.addAction("Çıkış")
+        quit_action.triggered.connect(self._quit_from_tray)
+        self._tray.setContextMenu(menu)
+
+        self._tray.activated.connect(self._on_tray_activated)
+        self._tray.show()
+        self._tray_notified = False
+
+    def _on_tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger,
+                      QSystemTrayIcon.ActivationReason.DoubleClick):
+            self._toggle_tray_visibility()
+
+    def _toggle_tray_visibility(self):
+        if self.isVisible():
+            self.hide()
+        else:
+            self.showNormal()
+            self.activateWindow()
+            self.raise_()
+
+    def _quit_from_tray(self):
+        import os as _os
+        self._tray.hide()
+        _os._exit(0)
+
+    def closeEvent(self, event):
+        event.ignore()
+        self.hide()
+        if not self._tray_notified:
+            self._tray_notified = True
+            self._tray.showMessage(
+                self._assistant_name,
+                "Arka planda çalışmaya devam ediyor. Tepsi ikonuna tıklayarak geri açabilirsin.",
+                QSystemTrayIcon.MessageIcon.Information,
+                4000,
+            )
+
     def _show_camera_frame(self, img_bytes: bytes):
         """Slot — display camera preview overlay (main thread)."""
         self._cam_preview.show_frame(img_bytes)
@@ -3386,6 +3438,7 @@ class JarvisUI:
     def __init__(self, face_path: str, size=None):
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
+        self._app.setQuitOnLastWindowClosed(False)
         self._win = MainWindow(face_path)
         self._win.show()
         self.root = _RootShim(self._app)
