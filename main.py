@@ -88,6 +88,7 @@ from actions.code_helper       import code_helper
 from actions.dev_agent         import dev_agent
 from actions.agent_task        import agent_task
 from actions.project_agent     import project_agent
+from actions.wiki_agent        import ingest_session, wiki_recall
 from actions.web_search        import web_search as web_search_action
 from actions.computer_control  import computer_control
 from actions.game_updater      import game_updater
@@ -439,6 +440,23 @@ TOOL_DECLARATIONS = [
                 "commit":  {"type": "BOOLEAN", "description": "Commit and push when done (default: true)"},
             },
             "required": ["project", "task"]
+        }
+    },
+    {
+        "name": "wiki_recall",
+        "description": (
+            "Recalls something from the user's permanent knowledge vault (Obsidian) — past "
+            "decisions, lessons, project history, or anything discussed and saved in previous "
+            "conversations. Use when the user asks 'do you remember...', 'what did we decide "
+            "about...', 'have we talked about X before', or references past context you don't "
+            "have in this session."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {"type": "STRING", "description": "What to recall, in plain language"},
+            },
+            "required": ["query"]
         }
     },
     {
@@ -998,6 +1016,10 @@ class JarvisLive:
                 r = await loop.run_in_executor(None, lambda: project_agent(parameters=args, player=self.ui, speak=self.speak))
                 result = r or "Done."
 
+            elif name == "wiki_recall":
+                r = await loop.run_in_executor(None, lambda: wiki_recall(parameters=args, player=self.ui))
+                result = r or "Done."
+
             elif name == "computer_control":
                 r = await loop.run_in_executor(None, lambda: computer_control(parameters=args, player=self.ui))
                 result = r or "Done."
@@ -1440,6 +1462,15 @@ class JarvisLive:
                 save_session_summary(summary, lang)
         except Exception as e:
             print(f"[Memory] ⚠️ Session summary failed: {e}")
+
+        # Auto-ingest into the Obsidian wiki — no approval, by design (see
+        # vault CLAUDE.md §14). Runs regardless of whether the summary above
+        # succeeded, as long as there was a real conversation (log has ≥3 turns,
+        # already checked at the top of this function).
+        try:
+            await asyncio.to_thread(ingest_session, log, lang)
+        except Exception as e:
+            print(f"[WikiAgent] ⚠️ Auto-ingest failed: {e}")
     # ── System monitor ──────────────────────────────────────────────────────────
 
     async def _run_system_monitor(self) -> None:

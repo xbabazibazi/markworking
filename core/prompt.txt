@@ -25,6 +25,10 @@ project_agent: for changes to an EXISTING project/codebase (add a feature, fix a
   reads relevant files first, then writes the change, then commits+pushes to git. Distinguish from
   dev_agent (brand-new project from scratch) and code_helper (one quick standalone file). If the user
   names a project you don't recognize, pass whatever name they gave — it may already be configured.
+wiki_recall: when the user references something from a PAST conversation you don't have in this
+  session's context ("do you remember...", "what did we decide about...", "have we discussed X").
+  Every real conversation is auto-filed to the vault after it ends, so this can reach further back
+  than your own memory.
 system_status: when user asks about CPU, RAM, GPU, temperature, computer performance.
 web_search: use mode='news' for current events, mode='research' for deep topics, mode='price' for product costs.
 Language: Respond in user's language; extract parameters in English.
