@@ -80,9 +80,21 @@ def _resolve_path(raw: str) -> Path:
         "videos":    _get_videos(),
         "home":      Path.home(),
     }
-    lower = raw.strip().lower()
+    raw   = raw.strip().strip('"').strip("'")
+    lower = raw.lower()
     if lower in shortcuts:
         return shortcuts[lower]
+
+    # "desktop/notlar/a.md" ve "desktop\notlar\a.md" — kısayol + alt yol.
+    # Bu dal olmadan tüm dize aşağıdaki göreli-yol dalına düşüyor ve process'in
+    # CWD'sine göre çözülüyordu. Proje home dışındaysa _is_safe_path reddedip
+    # "Access denied" veriyor; home içindeyse daha kötüsü oluyor ve dosya sessizce
+    # projenin içindeki olmayan bir "desktop" klasörüne yazılıyordu.
+    head, sep, rest = raw.replace("\\", "/").partition("/")
+    if sep and head.lower() in shortcuts:
+        rest = rest.strip("/")
+        return shortcuts[head.lower()] / rest if rest else shortcuts[head.lower()]
+
     return Path(raw).expanduser()
 
 def _format_size(b: int) -> str:

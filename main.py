@@ -37,6 +37,19 @@ logging.getLogger("google").setLevel(logging.ERROR)
 
 import platform as _platform
 import subprocess as _subprocess
+
+# ── Make stdout/stderr UTF-8 tolerant ────────────────────────────────────────
+# On non-UTF-8 Windows consoles (cp1254/cp1252/cp936...) any print() containing
+# an emoji raises UnicodeEncodeError. Several of those prints sit inside except
+# handlers, so the handler itself would blow up and skip the recovery code that
+# follows it — turning a recoverable error into a silent hang. errors="replace"
+# makes every print safe. (Delegates through StderrFilter.__getattr__ to the
+# real underlying stream.)
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass   # frozen builds may have no real stream attached
 # ... geri kalan importlarınız ...
 # ─────────────────────────────────────────────────────────────────────────────
 
