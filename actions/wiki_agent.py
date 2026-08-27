@@ -1,5 +1,6 @@
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -224,6 +225,26 @@ def _prepend_log_entry(slug: str, date: str, written: list[str], reason: str) ->
     log_path.write_text(text, encoding="utf-8")
 
 
+def _git_commit_and_push(slug: str, date: str) -> None:
+    """Back up the write immediately — this vault's only real disaster recovery
+    is its Gitea remote (see CLAUDE.md, added 2026-08-27 after a same-day
+    accidental deletion). Never let a failure here break the ingest itself."""
+    try:
+        run = lambda *args: subprocess.run(
+            ["git", *args], cwd=VAULT_PATH, capture_output=True, text=True, timeout=30
+        )
+        run("add", "-A")
+        commit = run("commit", "-m", f"jarvis: {date}-jarvis-{slug}")
+        if commit.returncode != 0 and "nothing to commit" not in commit.stdout:
+            print(f"[WikiAgent] git commit failed: {commit.stderr.strip()}")
+            return
+        push = run("push")
+        if push.returncode != 0:
+            print(f"[WikiAgent] git push failed: {push.stderr.strip()}")
+    except Exception as e:
+        print(f"[WikiAgent] git backup skipped: {e}")
+
+
 # ── Public API ──────────────────────────────────────────────────────────────
 
 def ingest_session(session_log: list[str], lang: str = "Turkish") -> str | None:
@@ -270,6 +291,7 @@ def ingest_session(session_log: list[str], lang: str = "Turkish") -> str | None:
         print(f"[WikiAgent] Write failed: {e}")
         return None
 
+    _git_commit_and_push(slug, date)
     print(f"[WikiAgent] Ingested {len(written)} file(s) — {reason}")
     return f"{len(written)} page(s) filed to the vault."
 

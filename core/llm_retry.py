@@ -17,9 +17,11 @@ import sys
 import time
 from pathlib import Path
 
-DEFAULT_MODEL  = "gemini-flash-latest"
-MAX_ATTEMPTS   = 3
-BACKOFF_BASE_S = 4.0   # 4s, 8s beklemeler — 503 tepeleri genelde saniyeler içinde iniyor
+DEFAULT_MODEL   = "gemini-flash-latest"
+MAX_ATTEMPTS    = 3
+BACKOFF_BASE_S  = 4.0        # 4s, 8s beklemeler — 503 tepeleri genelde saniyeler içinde iniyor
+REQUEST_TIMEOUT_MS = 45_000  # istek asılı kalırsa (503 gibi hata FIRLATMADAN sonsuza kadar
+                              # beklerse) burada kesilip retry mantığına düşsün diye zorunlu
 
 
 def _base_dir() -> Path:
@@ -38,7 +40,12 @@ def get_api_key() -> str:
 
 def _is_retryable(exc: Exception) -> bool:
     msg = str(exc)
-    return "503" in msg or "UNAVAILABLE" in msg or "overloaded" in msg.lower()
+    low = msg.lower()
+    return (
+        "503" in msg or "UNAVAILABLE" in msg or "overloaded" in low
+        or "504" in msg or "DEADLINE_EXCEEDED" in msg
+        or "timeout" in low or "timed out" in low
+    )
 
 
 class RetryingModel:
@@ -51,7 +58,11 @@ class RetryingModel:
     def _get_client(self):
         if self._client is None:
             from google import genai
-            self._client = genai.Client(api_key=get_api_key())
+            from google.genai import types
+            self._client = genai.Client(
+                api_key=get_api_key(),
+                http_options=types.HttpOptions(timeout=REQUEST_TIMEOUT_MS),
+            )
         return self._client
 
     def generate_content(self, contents, config=None):

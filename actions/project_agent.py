@@ -17,6 +17,7 @@ MAX_READ_FILES    = 10
 MAX_FILE_CHARS    = 6000
 GIT_TIMEOUT       = 20
 MAX_VERIFY_ROUNDS = 2
+TEST_TIMEOUT      = 90
 
 _IGNORE_DIRS = {
     ".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build",
@@ -177,6 +178,47 @@ JSON:"""
     return json.loads(raw)
 
 
+def _review_plan(task: str, plan: dict) -> dict:
+    """Second opinion: a senior developer reviewing a colleague's diff before it
+    ships. Catches scope creep and obvious mistakes before anything is written."""
+    model = _get_model()
+    changes = plan.get("changes", [])
+    diff_text = "\n\n".join(
+        f"--- {c.get('path')} ---\n{c.get('content', '')}" for c in changes
+    )
+
+    prompt = f"""You are a senior developer doing code review on a colleague's proposed
+change before it ships. Be critical but fair — this is a real review, not a rubber stamp.
+
+Task that was supposed to be accomplished: {task}
+
+Proposed summary: {plan.get('summary', '')}
+
+Proposed file changes (complete new content per file):
+{diff_text[:30000]}
+
+Review checklist:
+- Does this actually accomplish the stated task — nothing more, nothing less?
+- Any unrelated or unnecessary changes that should be reverted?
+- Any obvious bugs, missing error handling, or logic mistakes?
+- Does it match the existing code's style and conventions?
+
+Return ONLY valid JSON — no markdown:
+{{
+  "approved": true/false,
+  "feedback": "if not approved, specific actionable feedback on what to fix; empty string if approved"
+}}
+
+JSON:"""
+
+    try:
+        response = model.generate_content(prompt)
+        return json.loads(_strip_fences(response.text))
+    except Exception as e:
+        print(f"[ProjectAgent] ⚠️ Review failed (proceeding without it): {e}")
+        return {"approved": True, "feedback": ""}
+
+
 def _apply_changes(root: Path, changes: list[dict]) -> list[str]:
     written = []
     for change in changes:
@@ -234,6 +276,99 @@ def _verify_files(root: Path, rel_paths: list[str]) -> dict[str, str]:
         except Exception:
             continue
     return errors
+
+
+def _detect_test_command(root: Path) -> list[str] | None:
+    """Best-effort detection of how to run this project's existing test suite.
+    Returns None if nothing recognisable is found — not every project has tests,
+    and that's not something project_agent should invent."""
+    pkg = root / "package.json"
+    if pkg.exists():
+        try:
+            data = json.loads(pkg.read_text(encoding="utf-8"))
+            if data.get("scripts", {}).get("test"):
+                if (root / "pnpm-lock.yaml").exists():
+                    return ["pnpm", "test"]
+                if (root / "yarn.lock").exists():
+                    return ["yarn", "test"]
+                return ["npm", "test"]
+        except Exception:
+            pass
+
+    has_pytest_cfg = any((root / f).exists() for f in ("pytest.ini", "setup.cfg", "tox.ini"))
+    pyproject = root / "pyproject.toml"
+    has_pyproject_pytest = False
+    if pyproject.exists():
+        try:
+            has_pyproject_pytest = "pytest" in pyproject.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            pass
+    has_tests_dir = (root / "tests").is_dir() or (root / "test").is_dir()
+    if has_pytest_cfg or has_pyproject_pytest or has_tests_dir:
+        return [sys.executable, "-m", "pytest", "-q"]
+
+    if (root / "go.mod").exists():
+        return ["go", "test", "./..."]
+
+    return None
+
+
+def _run_tests(root: Path) -> dict | None:
+    """Runs the detected test command. Returns None if no test runner was found —
+    distinct from a run that happened and failed."""
+    cmd = _detect_test_command(root)
+    if not cmd:
+        return None
+    try:
+        result = subprocess.run(
+            cmd, cwd=str(root),
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+            timeout=TEST_TIMEOUT, **_WIN_HIDE,
+        )
+        output = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+        return {"passed": result.returncode == 0, "output": output[:8000]}
+    except subprocess.TimeoutExpired:
+        return {"passed": False, "output": f"Test run exceeded {TEST_TIMEOUT}s timeout — treating as failure."}
+    except FileNotFoundError as e:
+        print(f"[ProjectAgent] ⚠️ Test runner not available: {e}")
+        return None
+    except Exception as e:
+        return {"passed": False, "output": str(e)}
+
+
+def _fix_test_failures(root: Path, task: str, test_output: str, written: list[str]) -> list[str]:
+    """Asks the model to repair the files it wrote given real test failure output."""
+    model = _get_model()
+    file_contents = _read_files(root, written)
+    context = "\n\n".join(f"--- {p} ---\n{c}" for p, c in file_contents.items())
+
+    prompt = f"""You are a senior developer. The change below passes syntax checks but FAILS
+the project's existing test suite. Fix the code so the tests pass, without breaking the
+original task.
+
+Task: {task}
+
+Test failure output:
+{test_output[:6000]}
+
+Current content of the files you changed:
+{context[:30000]}
+
+Return ONLY valid JSON — no markdown:
+{{"changes": [{{"path": "relative/path", "content": "COMPLETE new file content"}}]}}
+
+Only include files that actually need to change to fix the failing tests.
+
+JSON:"""
+
+    try:
+        response = model.generate_content(prompt)
+        plan = json.loads(_strip_fences(response.text))
+        return _apply_changes(root, plan.get("changes", []))
+    except Exception as e:
+        print(f"[ProjectAgent] ⚠️ Test-failure fix planning failed: {e}")
+        return []
 
 
 def _fix_broken_files(root: Path, task: str, errors: dict[str, str]) -> list[str]:
@@ -330,38 +465,84 @@ def _run_task(root: Path, task: str, do_git: bool, speak, player) -> None:
                 speak(f"[TASK_COMPLETE] project_agent — {task[:60]}\nI could not determine any concrete file changes for this task, sir.")
             return
 
+        # Self-review: a second senior-developer pass on the diff before it's
+        # ever written to disk. One bounded revision round if rejected — real
+        # code review doesn't loop forever either.
+        log("Reviewing own plan before writing...")
+        review = _review_plan(task, plan)
+        review_note = ""
+        if not review.get("approved", True) and review.get("feedback"):
+            log(f"Self-review requested changes: {review['feedback'][:150]}")
+            revised_task = (
+                f"{task}\n\nA senior review of your first attempt found this issue — "
+                f"address it: {review['feedback']}"
+            )
+            plan = _plan_changes(revised_task, tree_text, file_contents)
+            changes = plan.get("changes", [])
+            summary = plan.get("summary", task)
+            review_note = "(Revised once after self-review caught an issue.) "
+            if not changes:
+                if speak:
+                    speak(f"[TASK_COMPLETE] project_agent — {task[:60]}\nSelf-review flagged the plan and the revision produced no changes, sir: {review['feedback'][:200]}")
+                return
+
         written = _apply_changes(root, changes)
 
         # Verify-and-fix loop: a senior developer checks their work before
-        # shipping. Syntax-check what was written; on failure, let the model
-        # repair its own output and re-check, up to MAX_VERIFY_ROUNDS.
+        # shipping. First syntax, then (if that passes) the project's own
+        # test suite — both get up to MAX_VERIFY_ROUNDS repair attempts from
+        # a shared budget.
         verify_note = ""
-        errors = _verify_files(root, written)
         rounds = 0
+        errors = _verify_files(root, written)
         while errors and rounds < MAX_VERIFY_ROUNDS:
             rounds += 1
             log(f"Verification failed for {len(errors)} file(s) — repairing (round {rounds})...")
             _fix_broken_files(root, task, errors)
             errors = _verify_files(root, written)
+
+        test_result = None
+        if not errors:
+            test_result = _run_tests(root)
+            while (
+                test_result and not test_result["passed"] and rounds < MAX_VERIFY_ROUNDS
+            ):
+                rounds += 1
+                log(f"Test suite failed — repairing (round {rounds})...")
+                _fix_test_failures(root, task, test_result["output"], written)
+                errors = _verify_files(root, written)
+                if errors:
+                    break
+                test_result = _run_tests(root)
+
         if errors:
             verify_note = (
                 f"WARNING — {len(errors)} file(s) still fail syntax checks after "
-                f"{MAX_VERIFY_ROUNDS} repair rounds: {', '.join(errors)}. "
+                f"{rounds} repair round(s): {', '.join(errors)}. "
             )
+        elif test_result and not test_result["passed"]:
+            verify_note = (
+                f"WARNING — project's test suite still fails after {rounds} repair "
+                f"round(s): {test_result['output'][:300]} "
+            )
+        elif test_result and test_result["passed"]:
+            verify_note = f"(Test suite passes{' after ' + str(rounds) + ' repair round(s)' if rounds else ''}.) "
         elif rounds:
             verify_note = f"(Fixed {rounds} round(s) of syntax errors before finishing.) "
 
+        broken = bool(errors) or bool(test_result and not test_result["passed"])
+
         git_result = "Skipped (not requested)."
         if do_git and written:
-            if errors:
-                git_result = "Skipped — will not commit files that fail verification."
+            if broken:
+                git_result = "Skipped — will not commit code that fails verification or tests."
             else:
                 log("Committing and pushing...")
                 git_result = _commit_and_push(root, written, summary)
 
         result = (
             f"{summary}\n"
-            f"{verify_note}"
+            f"{review_note}{verify_note}"
             f"Files changed: {', '.join(written) if written else '(none)'}\n"
             f"Git: {git_result}"
         )
