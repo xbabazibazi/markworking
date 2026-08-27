@@ -4,7 +4,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-VAULT_PATH = Path(r"C:\Users\DUR\Desktop\Proje\Structure DECKARD\documents wiki\knowledge-vault")
+VAULT_PATH = Path(r"C:\Users\DUR\Desktop\documents wiki\knowledge-vault")
 MODEL       = "gemini-flash-latest"
 MIN_CHARS   = 80   # below this, not even worth an LLM triage call
 
