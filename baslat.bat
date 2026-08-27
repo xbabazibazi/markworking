@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 > nul
-title Mark-LI Asistan Baslatici
+title Zyron Asistan Baslatici
 
 echo ===================================================
-echo            Mark-LI Baslatiliyor...
+echo            Zyron Baslatiliyor...
 echo ===================================================
 echo.
 
@@ -22,7 +22,7 @@ echo [*] Sanal ortam aktif ediliyor...
 call venv\Scripts\activate.bat
 
 :: 3. Projeyi calistir
-echo [*] Mark-LI calistiriliyor...
+echo [*] Zyron calistiriliyor...
 echo ===================================================
 echo.
 

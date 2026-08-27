@@ -1,4 +1,17 @@
-# ⚙️ MARK LI (51)
+# ⚙️ ZYRON
+
+> **Bu, kişisel bir fork'tur.** Asistan bu kurulumda **ZYRON** adıyla çalışır.
+> Taban kod FatihMakes'in **MARK LI (51)** projesinden gelir ve o projeye aittir;
+> aşağıdaki özellik açıklamaları ile atıflar orijinal işi anlatır.
+> Orijinal proje: **[FatihMakes/Mark-LI](https://github.com/FatihMakes/Mark-LI)** — Lisans: CC BY-NC 4.0
+>
+> Bu fork'ta eklenenler: `agent_task` (genel görev yürütücü + yıkıcı komut onayı),
+> `project_agent` (var olan projelerde kod değişikliği + test/öz-eleştiri + git),
+> `wiki_agent` (kalıcı Obsidian bilgi kasasına otomatik yazma ve geri çağırma),
+> `core/llm_retry.py` (503/504 dayanıklılığı).
+
+---
+
 ### The Ultimate Cross-Platform Personal AI Assistant — By FatihMakes
 
 > 📺 **[Watch the full setup video on YouTube](https://www.youtube.com/@FatihMakes)**
@@ -9,7 +22,7 @@ A real-time voice AI that can hear, see, understand, and control your computer �
 
 ## ✨ Overview
 
-MARK LI is the final form of the core: an assistant you extend without ever touching its engine. Drop a single plugin file into the `plugins/` folder and JARVIS learns a new skill on the next launch — no code changes, no configuration, no risk. On top of that, the voice itself got smarter: JARVIS now hears the emotion in your voice, knows when you're talking to someone else in the room and stays silent, and can hold one conversation for hours without losing the thread.
+MARK LI is the final form of the core: an assistant you extend without ever touching its engine. Drop a single plugin file into the `plugins/` folder and ZYRON learns a new skill on the next launch — no code changes, no configuration, no risk. On top of that, the voice itself got smarter: ZYRON now hears the emotion in your voice, knows when you're talking to someone else in the room and stays silent, and can hold one conversation for hours without losing the thread.
 
 It's not just an assistant — it's an extension of your digital life.
 
@@ -20,7 +33,7 @@ It's not just an assistant — it's an extension of your digital life.
 ### Core Features
 | Feature | Description |
 |---|---|
-| 🧩 Plugin System | Drop a single `.py` file into `plugins/` — JARVIS learns a new skill on next launch |
+| 🧩 Plugin System | Drop a single `.py` file into `plugins/` — ZYRON learns a new skill on next launch |
 | 🎙️ Real-time Voice | Ultra-low latency conversation in any language via Gemini Live API |
 | 💓 Affective Dialog | Hears the emotion in your voice and adapts its tone in response |
 | 🤫 Proactive Audio | Knows when you're not talking to it — background chatter never triggers a reply |
@@ -57,27 +70,27 @@ It's not just an assistant — it's an extension of your digital life.
 
 ## 🆕 What's New in Mark LI
 
-### 🧩 Plugin System — Extend JARVIS Without Touching a Single Core File
+### 🧩 Plugin System — Extend ZYRON Without Touching a Single Core File
 The headline feature of Mark LI, and the reason it's the final architecture version. Every new capability from now on ships as a single `.py` file:
 
 1. Download a plugin file (e.g. `calorie_counter.py`)
 2. Drop it into the `plugins/` folder
-3. Restart JARVIS — done. The skill is live, by voice, in any language.
+3. Restart ZYRON — done. The skill is live, by voice, in any language.
 
 Each plugin declares its own Gemini tool schema and logic in one file. The engine auto-discovers it at startup, registers it with the Live session, and lists it in the new **🧩 Plugin Manager** panel where every plugin gets its own persistent ON/OFF toggle.
 
-Safety is built in at three layers: a broken or badly written plugin can **never** crash JARVIS — it simply shows up as "BROKEN" in the manager with the error explained, while every other tool and plugin keeps working. Name collisions with core tools are detected and rejected automatically. Want to write your own? Copy `plugins/_template.py` and fill in two things: the `PLUGIN` dict and the `run()` function.
+Safety is built in at three layers: a broken or badly written plugin can **never** crash ZYRON — it simply shows up as "BROKEN" in the manager with the error explained, while every other tool and plugin keeps working. Name collisions with core tools are detected and rejected automatically. Want to write your own? Copy `plugins/_template.py` and fill in two things: the `PLUGIN` dict and the `run()` function.
 
-### 💓 Affective Dialog — JARVIS Hears How You Feel
-Powered by Gemini Live's native audio understanding, JARVIS now picks up the emotion in your voice — excitement, frustration, fatigue — and adapts its own tone in response. Late-night tired questions get calm answers; excited announcements get energy back.
+### 💓 Affective Dialog — ZYRON Hears How You Feel
+Powered by Gemini Live's native audio understanding, ZYRON now picks up the emotion in your voice — excitement, frustration, fatigue — and adapts its own tone in response. Late-night tired questions get calm answers; excited announcements get energy back.
 
 ### 🤫 Proactive Audio — Knows When You're Not Talking to It
-The biggest quality-of-life upgrade for an always-listening assistant: JARVIS can now tell when speech isn't addressed to it. Talking to someone in the room, taking a phone call, TV in the background — it stays silent instead of interjecting. No wake word needed, no accidental replies.
+The biggest quality-of-life upgrade for an always-listening assistant: ZYRON can now tell when speech isn't addressed to it. Talking to someone in the room, taking a phone call, TV in the background — it stays silent instead of interjecting. No wake word needed, no accidental replies.
 
 ### ♾️ Unlimited Session Length — The Conversation Never Dies
-Sliding-window context compression means the Live session no longer terminates when the context window fills up. Combined with session resumption, JARVIS holds one continuous conversation for hours without losing the thread.
+Sliding-window context compression means the Live session no longer terminates when the context window fills up. Combined with session resumption, ZYRON holds one continuous conversation for hours without losing the thread.
 
-All three Live API upgrades degrade gracefully: if the preview API ever rejects them, JARVIS automatically reconnects with the standard configuration — users never see a crash.
+All three Live API upgrades degrade gracefully: if the preview API ever rejects them, ZYRON automatically reconnects with the standard configuration — users never see a crash.
 
 ---
 
@@ -168,7 +181,7 @@ Licensed under **[Creative Commons BY-NC 4.0](https://creativecommons.org/licens
 
 ## 👤 Connect with the Creator
 
-Engineered by a developer building a real-world JARVIS-style assistant.
+Engineered by a developer building a real-world ZYRON-style assistant.
 ⭐ **Star the repository to support the journey to Mark 100.**
 
 | Platform | Link |

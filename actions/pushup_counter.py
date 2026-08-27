@@ -1,8 +1,8 @@
 """
-JARVIS plugin — Pushup Counter (webcam vision).
+ZYRON plugin — Pushup Counter (webcam vision).
 
-Say "Jarvis, count my pushups" (any language) — the HUD switches to the
-live camera, a 5-second countdown lets you get into position, then JARVIS
+Say "Zyron, count my pushups" (any language) — the HUD switches to the
+live camera, a 5-second countdown lets you get into position, then ZYRON
 counts your reps live on screen and finally delivers the result with
 playful, teasing motivational commentary in your language.
 
@@ -65,7 +65,7 @@ _MAX_SESSION_SECONDS = 180
 _IDLE_END_SECONDS    = 20    # end after this long without a rep (once started)
 _IDLE_ABORT_SECONDS  = 40    # abort if NO rep ever happens
 _FPS                 = 20
-_CYAN   = (255, 190, 40)     # JARVIS cyan-blue (BGR)
+_CYAN   = (255, 190, 40)     # ZYRON cyan-blue (BGR)
 _BRIGHT = (255, 235, 130)
 
 
@@ -288,7 +288,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
         if stream_sig:
             stream_sig.emit(True)
             view_open = True
-        _log(f"JARVIS: Pushup session started — {mode}.")
+        _log(f"ZYRON: Pushup session started — {mode}.")
 
         # Phase 1 — countdown so the user can get into position
         t0 = time.time()
@@ -329,7 +329,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
                 last_rep_time = time.time()
                 flash_until = last_rep_time + 0.6
                 if counter.reps % 10 == 0 or (target and counter.reps == target):
-                    _log(f"JARVIS: Pushup {counter.reps} 💪")
+                    _log(f"ZYRON: Pushup {counter.reps} 💪")
             if frame_sig:
                 _emit_frame(frame_sig,
                             _draw_overlay(frm, counter.reps, target,

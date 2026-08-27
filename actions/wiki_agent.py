@@ -51,7 +51,7 @@ def _plan_ingest(transcript: str, claude_md: str, index_md: str) -> dict:
     model = _get_model()
     prompt = f"""You are the automated wiki maintainer for a personal Obsidian knowledge vault.
 Below is this vault's schema/constitution (CLAUDE.md) — follow it EXACTLY for naming,
-frontmatter, and page structure. Note its §14: Jarvis (this session's source) is allowed
+frontmatter, and page structure. Note its §14: Zyron (this session's source) is allowed
 to write WITHOUT asking for approval, unlike the normal manual ingest flow.
 
 === VAULT SCHEMA (CLAUDE.md) ===
@@ -63,7 +63,7 @@ to write WITHOUT asking for approval, unlike the normal manual ingest flow.
 === VOICE CONVERSATION TRANSCRIPT TO INGEST ===
 {transcript[:15000]}
 
-This transcript is a voice conversation between the user and Jarvis, their personal AI
+This transcript is a voice conversation between the user and Zyron, their personal AI
 assistant. Decide whether it's worth permanently recording. SKIP trivial exchanges —
 single one-off commands ("open Chrome", "what's the volume"), small talk, time/weather
 checks. ONLY record conversations containing a durable decision, a lesson learned, a
@@ -76,7 +76,7 @@ Return ONLY valid JSON, no markdown:
   "date": "YYYY-MM-DD",
   "slug": "kebab-case-slug-under-8-words",
   "pages": [
-    {{"path": "sources/sessions/YYYY-MM-DD-jarvis-slug.md", "content": "full markdown incl. frontmatter"}}
+    {{"path": "sources/sessions/YYYY-MM-DD-zyron-slug.md", "content": "full markdown incl. frontmatter"}}
   ],
   "index_entries": [
     {{"category": "Kaynaklar", "line": "- [[sources/sessions/...]] — one line summary *(proje · tarih)*"}}
@@ -106,8 +106,8 @@ JSON:"""
 # ── Vault writes ──────────────────────────────────────────────────────────────
 
 def _write_transcript(date: str, slug: str, session_log: list[str]) -> str:
-    slug = re.sub(r"^jarvis-", "", slug)  # avoid "jarvis-jarvis-" if the LLM's slug already has it
-    rel = f"raw/sessions/{date}-jarvis-{slug}.md"
+    slug = re.sub(r"^zyron-", "", slug)  # avoid "zyron-zyron-" if the LLM's slug already has it
+    rel = f"raw/sessions/{date}-zyron-{slug}.md"
     full = VAULT_PATH / rel
     full.parent.mkdir(parents=True, exist_ok=True)
     full.write_text("\n".join(session_log), encoding="utf-8")
@@ -192,7 +192,7 @@ def _recompute_counts() -> None:
     )
     text = re.sub(
         r"Son güncelleme:.*",
-        f"Son güncelleme: {datetime.now().strftime('%Y-%m-%d')} (jarvis otomatik ingest)",
+        f"Son güncelleme: {datetime.now().strftime('%Y-%m-%d')} (zyron otomatik ingest)",
         text,
     )
     index_path.write_text(text, encoding="utf-8")
@@ -206,8 +206,8 @@ def _prepend_log_entry(slug: str, date: str, written: list[str], reason: str) ->
 
     files_list = "\n".join(f"- `{p}`" for p in written)
     entry = (
-        f"## [{date}] ingest | jarvis-session-{slug}\n\n"
-        f"- Otomatik (Jarvis, onaysız — bkz. CLAUDE.md §14) — {reason}\n"
+        f"## [{date}] ingest | zyron-session-{slug}\n\n"
+        f"- Otomatik (Zyron, onaysız — bkz. CLAUDE.md §14) — {reason}\n"
         f"{files_list}\n\n"
     )
 
@@ -234,7 +234,7 @@ def _git_commit_and_push(slug: str, date: str) -> None:
             ["git", *args], cwd=VAULT_PATH, capture_output=True, text=True, timeout=30
         )
         run("add", "-A")
-        commit = run("commit", "-m", f"jarvis: {date}-jarvis-{slug}")
+        commit = run("commit", "-m", f"zyron: {date}-zyron-{slug}")
         if commit.returncode != 0 and "nothing to commit" not in commit.stdout:
             print(f"[WikiAgent] git commit failed: {commit.stderr.strip()}")
             return
@@ -249,7 +249,7 @@ def _git_commit_and_push(slug: str, date: str) -> None:
 
 def ingest_session(session_log: list[str], lang: str = "Turkish") -> str | None:
     """
-    Called automatically after every Jarvis conversation ends — no user approval
+    Called automatically after every Zyron conversation ends — no user approval
     (see vault CLAUDE.md §14, an explicit, deliberate exception to the vault's
     normal manual-ingest-with-approval rule). Silently no-ops if the vault is
     missing or the conversation wasn't worth recording.

@@ -23,6 +23,6 @@ Thumbs.db
 2.1.0
 
 # PyInstaller build çıktıları (bu makineye özel mutlak yol içerir, versiyonlanmaz)
-Jarvis.exe
+Zyron.exe
 build_tmp/
 *.spec

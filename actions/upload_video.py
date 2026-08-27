@@ -266,7 +266,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
             except Exception:
                 pass
 
-    _log("JARVIS: TikTok upload starting — please don't touch the mouse "
+    _log("ZYRON: TikTok upload starting — please don't touch the mouse "
          "or keyboard.")
 
     say = getattr(player, "request_say", None) if player else None

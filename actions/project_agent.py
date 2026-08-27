@@ -428,7 +428,7 @@ def _commit_and_push(root: Path, written: list[str], summary: str) -> str:
     if not ok:
         return "Could not stage changed files for commit."
 
-    ok, out = _run_git(root, ["commit", "-m", f"Jarvis: {summary}"])
+    ok, out = _run_git(root, ["commit", "-m", f"Zyron: {summary}"])
     if not ok:
         if "nothing to commit" in out.lower():
             return "Nothing to commit (files unchanged)."
