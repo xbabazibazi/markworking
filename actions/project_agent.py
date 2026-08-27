@@ -1,15 +1,22 @@
 import json
+import platform
 import re
 import subprocess
 import sys
 import threading
 from pathlib import Path
 
+if platform.system() == "Windows":
+    _WIN_HIDE: dict = {"creationflags": subprocess.CREATE_NO_WINDOW}
+else:
+    _WIN_HIDE: dict = {}
+
 MODEL             = "gemini-flash-latest"
 MAX_TREE_ENTRIES  = 500
 MAX_READ_FILES    = 10
 MAX_FILE_CHARS    = 6000
 GIT_TIMEOUT       = 20
+MAX_VERIFY_ROUNDS = 2
 
 _IGNORE_DIRS = {
     ".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build",
@@ -34,14 +41,8 @@ def _get_api_key() -> str:
 
 
 def _get_model():
-    from google import genai
-    client = genai.Client(api_key=_get_api_key())
-
-    class _W:
-        def generate_content(self, contents):
-            return client.models.generate_content(model=MODEL, contents=contents)
-
-    return _W()
+    from core.llm_retry import get_model
+    return get_model(MODEL)
 
 
 def _strip_fences(text: str) -> str:
@@ -194,13 +195,88 @@ def _apply_changes(root: Path, changes: list[dict]) -> list[str]:
     return written
 
 
+def _verify_files(root: Path, rel_paths: list[str]) -> dict[str, str]:
+    """Syntax-check written files; returns rel_path -> error text for failures.
+    Checkers that aren't installed (e.g. node) are skipped silently — better
+    no verification than a false failure."""
+    checkers = {
+        ".py":  [sys.executable, "-m", "py_compile"],
+        ".js":  ["node", "--check"],
+        ".mjs": ["node", "--check"],
+        ".cjs": ["node", "--check"],
+    }
+    errors: dict[str, str] = {}
+    for rel in rel_paths:
+        full = root / rel
+        ext = full.suffix.lower()
+
+        if ext == ".json":
+            try:
+                json.loads(full.read_text(encoding="utf-8"))
+            except Exception as e:
+                errors[rel] = f"JSON parse error: {e}"
+            continue
+
+        checker = checkers.get(ext)
+        if not checker:
+            continue
+        try:
+            result = subprocess.run(
+                checker + [str(full)],
+                capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
+                timeout=30, **_WIN_HIDE,
+            )
+            if result.returncode != 0:
+                errors[rel] = (result.stderr or result.stdout).strip()[:1500]
+        except FileNotFoundError:
+            continue   # checker binary not on this machine
+        except Exception:
+            continue
+    return errors
+
+
+def _fix_broken_files(root: Path, task: str, errors: dict[str, str]) -> list[str]:
+    """Ask the model to repair each file that failed verification; returns rewritten paths."""
+    model = _get_model()
+    fixed = []
+    for rel, error in errors.items():
+        full = root / rel
+        try:
+            broken = full.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        prompt = f"""You are a senior developer. The file below was just written for this task
+but fails its syntax check. Fix it. Return ONLY the complete corrected file content —
+no explanation, no markdown, no backticks.
+
+Task the file is part of: {task}
+
+Syntax error:
+{error}
+
+Broken file ({rel}):
+{broken[:20000]}
+
+Corrected file content:"""
+        try:
+            corrected = _strip_fences(model.generate_content(prompt).text)
+            if corrected:
+                full.write_text(corrected, encoding="utf-8")
+                fixed.append(rel)
+                print(f"[ProjectAgent] 🔧 Repaired: {rel}")
+        except Exception as e:
+            print(f"[ProjectAgent] ⚠️ Could not repair {rel}: {e}")
+    return fixed
+
+
 def _run_git(root: Path, args: list[str]) -> tuple[bool, str]:
     try:
         result = subprocess.run(
             ["git"] + args, cwd=str(root),
             capture_output=True, text=True,
             encoding="utf-8", errors="replace",
-            timeout=GIT_TIMEOUT,
+            timeout=GIT_TIMEOUT, **_WIN_HIDE,
         )
         out = (result.stdout or "").strip()
         err = (result.stderr or "").strip()
@@ -256,13 +332,36 @@ def _run_task(root: Path, task: str, do_git: bool, speak, player) -> None:
 
         written = _apply_changes(root, changes)
 
+        # Verify-and-fix loop: a senior developer checks their work before
+        # shipping. Syntax-check what was written; on failure, let the model
+        # repair its own output and re-check, up to MAX_VERIFY_ROUNDS.
+        verify_note = ""
+        errors = _verify_files(root, written)
+        rounds = 0
+        while errors and rounds < MAX_VERIFY_ROUNDS:
+            rounds += 1
+            log(f"Verification failed for {len(errors)} file(s) — repairing (round {rounds})...")
+            _fix_broken_files(root, task, errors)
+            errors = _verify_files(root, written)
+        if errors:
+            verify_note = (
+                f"WARNING — {len(errors)} file(s) still fail syntax checks after "
+                f"{MAX_VERIFY_ROUNDS} repair rounds: {', '.join(errors)}. "
+            )
+        elif rounds:
+            verify_note = f"(Fixed {rounds} round(s) of syntax errors before finishing.) "
+
         git_result = "Skipped (not requested)."
         if do_git and written:
-            log("Committing and pushing...")
-            git_result = _commit_and_push(root, written, summary)
+            if errors:
+                git_result = "Skipped — will not commit files that fail verification."
+            else:
+                log("Committing and pushing...")
+                git_result = _commit_and_push(root, written, summary)
 
         result = (
             f"{summary}\n"
+            f"{verify_note}"
             f"Files changed: {', '.join(written) if written else '(none)'}\n"
             f"Git: {git_result}"
         )
