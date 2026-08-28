@@ -1,13 +1,29 @@
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
 VAULT_PATH = Path(r"C:\Users\DUR\Desktop\documents wiki\knowledge-vault")
 MODEL       = "gemini-flash-latest"
 MIN_CHARS   = 80   # below this, not even worth an LLM triage call
+
+# ── Shared ingest lock ────────────────────────────────────────────────────────
+# There are TWO writers to this vault and its git repo:
+#   1. this module — Zyron's own voice conversations (Gemini)
+#   2. .claude/zyron/ingest.ps1 — Claude Code session transcripts (headless claude)
+# They ingest different sources, so they don't duplicate content — but they do
+# collide: both run `git add` + commit + push on the same repo, and both
+# read-modify-write index.md and log.md. The PowerShell side can hold this lock
+# for many minutes (its `claude -p` step is slow), so we WAIT rather than skip.
+ZYRON_DIR          = VAULT_PATH / ".zyron"
+LOCK_FILE          = ZYRON_DIR / "ingest.lock"
+LOCK_STALE_MINUTES = 30    # same staleness rule as ingest.ps1
+LOCK_WAIT_SECONDS  = 600   # bounded — never hang the assistant forever
+LOCK_POLL_SECONDS  = 10
 
 
 def _base_dir() -> Path:
@@ -225,15 +241,78 @@ def _prepend_log_entry(slug: str, date: str, written: list[str], reason: str) ->
     log_path.write_text(text, encoding="utf-8")
 
 
-def _git_commit_and_push(slug: str, date: str) -> None:
+def _acquire_ingest_lock() -> bool:
+    """Take the lock shared with .claude/zyron/ingest.ps1. Returns False if the
+    other writer held it for the whole wait window.
+
+    O_CREAT|O_EXCL makes the create atomic, so two Python writers can never both
+    win. The PowerShell side uses Set-Content (not exclusive), so this is not a
+    perfect mutex against it — but that side writes its lock in the first
+    milliseconds of the script, making the overlap window negligible."""
+    try:
+        ZYRON_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"[WikiAgent] Could not prepare lock directory: {e}")
+        return False
+
+    deadline  = time.monotonic() + LOCK_WAIT_SECONDS
+    announced = False
+    while True:
+        try:
+            fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(fd, str(os.getpid()).encode("ascii"))
+            finally:
+                os.close(fd)
+            return True
+        except FileExistsError:
+            try:
+                age_min = (time.time() - LOCK_FILE.stat().st_mtime) / 60
+            except FileNotFoundError:
+                continue   # released between our attempt and the stat — retry now
+            if age_min >= LOCK_STALE_MINUTES:
+                print(f"[WikiAgent] Stale ingest lock ({age_min:.0f} min old) — taking over.")
+                try:
+                    LOCK_FILE.unlink()
+                except Exception:
+                    pass
+                continue
+            if not announced:
+                print("[WikiAgent] Another ingest is running — waiting for the shared lock...")
+                announced = True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(LOCK_POLL_SECONDS)
+        except Exception as e:
+            print(f"[WikiAgent] Lock error: {e}")
+            return False
+
+
+def _release_ingest_lock() -> None:
+    try:
+        LOCK_FILE.unlink(missing_ok=True)
+    except Exception as e:
+        print(f"[WikiAgent] Could not release lock: {e}")
+
+
+def _git_commit_and_push(slug: str, date: str, written: list[str]) -> None:
     """Back up the write immediately — this vault's only real disaster recovery
     is its Gitea remote (see CLAUDE.md, added 2026-08-27 after a same-day
-    accidental deletion). Never let a failure here break the ingest itself."""
+    accidental deletion). Never let a failure here break the ingest itself.
+
+    Stages ONLY the files this ingest wrote. `git add -A` would sweep in whatever
+    else happens to be uncommitted — a half-finished write from the other ingest
+    path, or the user's own in-progress edits in Obsidian."""
     try:
         run = lambda *args: subprocess.run(
             ["git", *args], cwd=VAULT_PATH, capture_output=True, text=True, timeout=30
         )
-        run("add", "-A")
+        if not written:
+            return
+        add = run("add", "--", *written)
+        if add.returncode != 0:
+            print(f"[WikiAgent] git add failed: {add.stderr.strip()}")
+            return
         commit = run("commit", "-m", f"zyron: {date}-zyron-{slug}")
         if commit.returncode != 0 and "nothing to commit" not in commit.stdout:
             print(f"[WikiAgent] git commit failed: {commit.stderr.strip()}")
@@ -281,17 +360,32 @@ def ingest_session(session_log: list[str], lang: str = "Turkish") -> str | None:
     slug = _slugify(plan.get("slug", "session"))
     reason = plan.get("reason", "")
 
-    try:
-        transcript_rel = _write_transcript(date, slug, session_log)
-        written = [transcript_rel] + _write_pages(plan.get("pages", []))
-        _update_index(plan.get("index_entries", []))
-        _recompute_counts()
-        _prepend_log_entry(slug, date, written, reason)
-    except Exception as e:
-        print(f"[WikiAgent] Write failed: {e}")
+    # Everything below touches the vault and its git repo — the other ingest
+    # path must not be running at the same time.
+    if not _acquire_ingest_lock():
+        print(
+            f"[WikiAgent] GIVING UP: the other ingest held the lock for "
+            f"{LOCK_WAIT_SECONDS // 60} minutes. This conversation was NOT filed. "
+            f"Slug would have been: {date}-zyron-{slug}"
+        )
         return None
 
-    _git_commit_and_push(slug, date)
+    try:
+        try:
+            transcript_rel = _write_transcript(date, slug, session_log)
+            written = [transcript_rel] + _write_pages(plan.get("pages", []))
+            _update_index(plan.get("index_entries", []))
+            _recompute_counts()
+            _prepend_log_entry(slug, date, written, reason)
+        except Exception as e:
+            print(f"[WikiAgent] Write failed: {e}")
+            return None
+
+        written += ["index.md", "log.md"]
+        _git_commit_and_push(slug, date, written)
+    finally:
+        _release_ingest_lock()
+
     print(f"[WikiAgent] Ingested {len(written)} file(s) — {reason}")
     return f"{len(written)} page(s) filed to the vault."
 
